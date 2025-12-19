@@ -60,7 +60,19 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         
 class OrderSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = Order      
+        model = Order   
+        
+class ProductSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Product   
+
+user_schema = UserSchema()
+order_schema = OrderSchema()
+orders_schema = OrderSchema(many=True)
+product_schema = ProductSchema()
+products_schema = ProductSchema(many=True)
+
+
 
 if __name__ == '__main__':
     with app.app_context():
