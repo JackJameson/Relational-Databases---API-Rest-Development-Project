@@ -38,7 +38,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100))
     address: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    orders: Mapped[List["Order"]] = relationship(back_populates="user")
+    orders: Mapped[List["Order"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 class Order(Base):
     __tablename__ = "orders" 
@@ -62,6 +62,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
 class OrderSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Order   
+        include_fk = True
         
 class ProductSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
@@ -95,6 +96,8 @@ def get_users():
 @app.route('/users/<int:id>', methods=['GET'])
 def get_user(id):
     user = db.session.get(User, id)
+    if not user:
+        return jsonify({"message": "User not found"}), 400
     return user_schema.jsonify(user), 200
 
 @app.route('/users/<int:id>', methods=['PUT'])
@@ -121,7 +124,7 @@ def delete_user(id):
     
     db.session.delete(user)
     db.session.commit()
-    return jsonify({"message": f"succefully deleted user {id}"}), 200
+    return jsonify({"message": f"successfully deleted user {id}"}), 200
 
 @app.route('/products', methods=['POST'])
 def create_product():
@@ -144,6 +147,8 @@ def get_products():
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product(id):
     product = db.session.get(Product, id)
+    if not product:
+        return jsonify({"message": "Product not found"}), 400
     return product_schema.jsonify(product), 200
 
 @app.route('/products/<int:id>', methods=['PUT'])
@@ -169,54 +174,71 @@ def delete_product(id):
     
     db.session.delete(product)
     db.session.commit()
-    return jsonify({"message": f"succefully deleted product {id}"}), 200
+    return jsonify({"message": f"successfully deleted product {id}"}), 200
 
 @app.route('/orders', methods=['POST'])
 def create_order():
     try:
-        order_data = order_schema.load(request.json)
+        user_id = request.json.get('user_id')
+        if not user_id:
+            return jsonify({"message": "user_id is required"}), 400
+        
+        user = db.session.get(User, user_id)
+        if not user:
+             return jsonify({"message": "Invalid user_id"}), 400
+        
+        new_order = Order(user_id=user_id)
+        db.session.add(new_order)
+        db.session.commit()
+        return order_schema.jsonify(new_order), 201
     except ValidationError as e:
         return jsonify(e.messages), 400
 
-    new_order = Order(user_id=order_data['user_id'])
-    db.session.add(new_order)
+@app.route('/orders/<int:order_id>/add_product/<int:product_id>', methods=['PUT'])
+def add_product_to_order(order_id, product_id):
+    order = db.session.get(Order, order_id)
+    product = db.session.get(Product, product_id)
+
+    if not order or not product:
+        return jsonify({"message": "Order or Product not found"}), 400
+
+    if product in order.products:
+        return jsonify({"message": "Product already exists in order"}), 400
+
+    order.products.append(product)
     db.session.commit()
-    return order_schema.jsonify(new_order), 201
+    return jsonify({"message": f"Product {product_id} added to Order {order_id}"}), 200
 
-@app.route('/orders', methods=['GET'])
-def get_orders():
-    query = select(Order)
-    orders = db.session.execute(query).scalars().all()
-    return orders_schema.jsonify(orders), 200
+@app.route('/orders/<int:order_id>/remove_product/<int:product_id>', methods=['DELETE'])
+def remove_product_from_order(order_id, product_id):
+    order = db.session.get(Order, order_id)
+    product = db.session.get(Product, product_id)
 
-@app.route('/orders/<int:id>', methods=['GET'])
-def get_order(id):
-    order = db.session.get(Order, id)
-    return order_schema.jsonify(order), 200
+    if not order or not product:
+        return jsonify({"message": "Order or Product not found"}), 400
 
-@app.route('/orders/<int:id>', methods=['PUT'])
-def update_order(id):
-    order = db.session.get(Order, id)
-    if not order:
-        return jsonify({"message": "Invalid order id"}), 400
-    try:
-        order_data = order_schema.load(request.json)
-    except ValidationError as e:
-        return jsonify(e.messages), 400
+    if product not in order.products:
+        return jsonify({"message": "Product not found in this order"}), 400
+
+    order.products.remove(product)
+    db.session.commit()
+    return jsonify({"message": f"Product {product_id} removed from Order {order_id}"}), 200
+
+@app.route('/orders/user/<int:user_id>', methods=['GET'])
+def get_orders_by_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"message": "User not found"}), 400
     
-    order.user_id = order_data['user_id']
-    db.session.commit()
-    return order_schema.jsonify(order), 200
+    return orders_schema.jsonify(user.orders), 200
 
-@app.route('/orders/<int:id>', methods=['DELETE'])
-def delete_order(id):
-    order = db.session.get(Order, id)
+@app.route('/orders/<int:order_id>/products', methods=['GET'])
+def get_products_in_order(order_id):
+    order = db.session.get(Order, order_id)
     if not order:
-        return jsonify({"message": "Invalid order id"}), 400
+        return jsonify({"message": "Order not found"}), 400
     
-    db.session.delete(order)
-    db.session.commit()
-    return jsonify({"message": f"succefully deleted order {id}"}), 200
+    return products_schema.jsonify(order.products), 200
 
 if __name__ == '__main__':
     with app.app_context():
