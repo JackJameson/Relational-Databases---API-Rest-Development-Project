@@ -33,32 +33,34 @@ order_product = Table(
 
 class User(Base):
     __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     address: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    
-    # Relationship to Order
     orders: Mapped[List["Order"]] = relationship(back_populates="user")
 
 class Order(Base):
     __tablename__ = "orders" 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    order_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(datetime.UTC))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    
-    # Relationships
     user: Mapped["User"] = relationship(back_populates="orders")
     products: Mapped[List["Product"]] = relationship(secondary=order_product, back_populates="orders")
 
 class Product(Base):
     __tablename__ = "products"
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
     product_name: Mapped[str] = mapped_column(String(100))
     price: Mapped[float] = mapped_column(Float)
-    
-    # Relationship to Order
     orders: Mapped[List["Order"]] = relationship(secondary=order_product, back_populates="products")
+    
+class UserSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = User
+        
+class OrderSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Order      
 
 if __name__ == '__main__':
     with app.app_context():
