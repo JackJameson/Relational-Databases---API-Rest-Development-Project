@@ -1,10 +1,11 @@
 from __future__ import annotations
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
-from sqlalchemy import ForeignKey, Table, Column, String, Integer, Float, DateTime
-from datetime import datetime
+from sqlalchemy import ForeignKey, Table, Column, String, Integer, Float, DateTime, select
+from datetime import datetime, timezone
+from marshmallow import ValidationError
 from typing import List
 
 # Initialize Flask app
@@ -42,7 +43,7 @@ class User(Base):
 class Order(Base):
     __tablename__ = "orders" 
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(datetime.UTC))
+    order_date: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     user: Mapped["User"] = relationship(back_populates="orders")
     products: Mapped[List["Product"]] = relationship(secondary=order_product, back_populates="orders")
@@ -67,11 +68,60 @@ class ProductSchema(ma.SQLAlchemyAutoSchema):
         model = Product   
 
 user_schema = UserSchema()
+users_schema = UserSchema(many=True)
 order_schema = OrderSchema()
 orders_schema = OrderSchema(many=True)
 product_schema = ProductSchema()
 products_schema = ProductSchema(many=True)
 
+@app.route('/users', methods=['POST'])
+def create_user():
+    try:
+        user_data = user_schema.load(request.json)
+    except ValidationError as e:
+        return jsonify(e.messages), 400
+
+    new_user = User(name=user_data['name'], address=user_data['address'], email=user_data['email'])
+    db.session.add(new_user)
+    db.session.commit()
+    return user_schema.jsonify(new_user), 201
+    
+@app.route('/users', methods=['GET'])
+def get_users():
+    query = select(User)
+    users = db.session.execute(query).scalars().all()
+    return users_schema.jsonify(users), 200
+
+@app.route('/users/<int:id>', methods=['GET'])
+def get_user(id):
+    user = db.session.get(User, id)
+    return user_schema.jsonify(user), 200
+
+@app.route('/users/<int:id>', methods=['PUT'])
+def update_user(id):
+    user = db.session.get(User, id)
+    if not user:
+        return jsonify({"message": "Invalid user id"}), 400
+    try:
+        user_data = user_schema.load(request.json)
+    except ValidationError as e:
+        return jsonify(e.messages), 400
+    
+    user.name = user_data['name']
+    user.address = user_data['address']
+    user.email = user_data['email']
+    db.session.commit()
+    return user_schema.jsonify(user), 200
+
+@app.route('/users/<int:id>', methods=['DELETE'])
+def delete_user(id):
+    user = db.session.get(User, id)
+    if not user:
+        return jsonify({"message": "Invalid user id"}), 400
+    
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": f"succefully deleted user {id}"}), 200
 
 
 if __name__ == '__main__':
