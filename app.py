@@ -171,7 +171,52 @@ def delete_product(id):
     db.session.commit()
     return jsonify({"message": f"succefully deleted product {id}"}), 200
 
+@app.route('/orders', methods=['POST'])
+def create_order():
+    try:
+        order_data = order_schema.load(request.json)
+    except ValidationError as e:
+        return jsonify(e.messages), 400
 
+    new_order = Order(user_id=order_data['user_id'])
+    db.session.add(new_order)
+    db.session.commit()
+    return order_schema.jsonify(new_order), 201
+
+@app.route('/orders', methods=['GET'])
+def get_orders():
+    query = select(Order)
+    orders = db.session.execute(query).scalars().all()
+    return orders_schema.jsonify(orders), 200
+
+@app.route('/orders/<int:id>', methods=['GET'])
+def get_order(id):
+    order = db.session.get(Order, id)
+    return order_schema.jsonify(order), 200
+
+@app.route('/orders/<int:id>', methods=['PUT'])
+def update_order(id):
+    order = db.session.get(Order, id)
+    if not order:
+        return jsonify({"message": "Invalid order id"}), 400
+    try:
+        order_data = order_schema.load(request.json)
+    except ValidationError as e:
+        return jsonify(e.messages), 400
+    
+    order.user_id = order_data['user_id']
+    db.session.commit()
+    return order_schema.jsonify(order), 200
+
+@app.route('/orders/<int:id>', methods=['DELETE'])
+def delete_order(id):
+    order = db.session.get(Order, id)
+    if not order:
+        return jsonify({"message": "Invalid order id"}), 400
+    
+    db.session.delete(order)
+    db.session.commit()
+    return jsonify({"message": f"succefully deleted order {id}"}), 200
 
 if __name__ == '__main__':
     with app.app_context():
